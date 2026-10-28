@@ -39,8 +39,10 @@ Reference documentation for the board is collected in [`docs/`](docs/).
 1. On first boot (no configuration stored) the device starts **both**:
    - a Wi-Fi **SoftAP** captive/config portal, and
    - a **BLE** server.
-2. Connect to the Wi-Fi AP (SSID `ESP32C3-CFG-<mac>`) and open the portal, or
-   pair over Bluetooth (PIN `0000`).
+ 2. Connect to the Wi-Fi AP (SSID `ESP32C3-CFG-<mac>`) and open the portal, or
+    pair over Bluetooth (PIN `0000`). The OLED displays the AP name and the
+    portal IP address (by default **`192.168.4.1`**); open
+    **http://192.168.4.1** in a browser.
 3. Pick the connection type, enter your Wi-Fi credentials (Wi-Fi mode) and your
    location (province for `italy/`, any city for `world/`).
 4. The choice is persisted in NVS (flash). On the next boot the device connects
@@ -93,8 +95,10 @@ esptool.py --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 world/firmware/firm
 After flashing, the device reboots into the provisioning portal:
 
 1. Connect to the Wi-Fi AP named `ESP32C3-CFG-<mac>` from your phone/laptop.
-2. Open the portal, choose **Wi-Fi** or **Bluetooth**, enter your credentials
-   and your location (province for `italy/`, any city for `world/`).
+   The OLED shows the AP name and the portal IP (default **`192.168.4.1`**).
+2. Open **http://192.168.4.1** in a browser, choose **Wi-Fi** or **Bluetooth**,
+   enter your credentials and your location (province for `italy/`, any city
+   for `world/`).
 3. The device connects, fetches the time and weather, and starts displaying.
 
 To wipe the configuration and start over, **hold the BOOT button for 5
