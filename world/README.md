@@ -1,0 +1,48 @@
+# World variant — ESP32-C3 OLED Weather Station
+
+This is the **world-wide** build of the firmware. During provisioning the portal
+lets you type **any city in the world**; the device resolves it to coordinates
+and timezone (via Open-Meteo geocoding) and fetches the daily weather.
+
+## Differences from the `italy/` variant
+
+- The configuration portal uses a **free-text city** input instead of an
+  Italian province dropdown.
+- The per-city timezone returned by Open-Meteo is applied to the clock, so the
+  displayed time is correct for the chosen location.
+- The fallback timezone (used only if Open-Meteo does not return one) is `UTC`.
+
+Everything else — display behavior, Bluetooth mode, factory reset, build/flash
+instructions — is identical to the [`italy/`](../italy/README.md) variant and is
+described in the [top-level README](../README.md).
+
+## Build & flash
+
+```bash
+cd world
+pio run -e esp32-c3-devkitm-1
+pio run -e esp32-c3-devkitm-1 -t upload
+pio device monitor
+```
+
+### Prebuilt firmware
+
+A ready-to-flash factory image is provided at
+[`firmware/firmware.factory.bin`](firmware/firmware.factory.bin). Flash it with
+esptool (adjust the serial port):
+
+```bash
+esptool.py --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 firmware/firmware.factory.bin
+```
+
+## Source map
+
+| File             | Purpose                                                     |
+|------------------|-------------------------------------------------------------|
+| `main.cpp`       | Boot flow, provisioning, Wi-Fi/BLE loop, weather refresh.   |
+| `wifi_portal.*`  | SoftAP config portal with the free-text city input.         |
+| `ble_prov.*`     | BLE server; receives time + weather from a paired phone.    |
+| `storage.*`      | NVS persistence (mode, location, lat/lon, timezone).        |
+| `weather.*`      | Open-Meteo geocoding + forecast helpers.                    |
+| `display.*`      | 72×40 OLED rendering (clock, weather icons, temps, status). |
+| `config.h`       | Pinout, NVS keys, timing and default timezone.              |

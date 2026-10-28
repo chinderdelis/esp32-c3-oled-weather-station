@@ -1,0 +1,32 @@
+# PlatformIO / build artifacts
+.pio/
+.vscode/
+build/
+include/
+lib/
+data/
+
+# Compiled binaries / intermediate files
+*.bin
+*.elf
+*.map
+*.hex
+*.uf2
+
+# Prebuilt factory binaries (kept for easy flashing)
+!italy/firmware/
+!italy/firmware/*.bin
+!world/firmware/
+!world/firmware/*.bin
+
+# Old / obsolete working directories
+worldver/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
