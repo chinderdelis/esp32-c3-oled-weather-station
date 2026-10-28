@@ -54,6 +54,28 @@ Reference documentation for the board is collected in [`docs/`](docs/).
 > timezone after connecting, then periodically fetches the day's weather. If a
 > location cannot be resolved, it returns to the provisioning portal.
 
+### Bluetooth mode (phone as data source)
+
+When **Bluetooth** is selected, the device does **not** use the internet. Like a
+Bluetooth smartwatch, it relies on the paired phone, which pushes the current
+**time** and **weather** to the device. Pair with PIN `0000`; once paired, the
+phone sends updates (`hour`, `minute`, `weather_code`, `temp_min`, `temp_max`)
+and the device displays them. The location itself is chosen in the portal during
+configuration.
+
+### Radios after first configuration
+
+After the first successful configuration, the interface you did **not** choose is
+switched off permanently — until a factory reset:
+
+- **Wi-Fi chosen** → Bluetooth is fully de-initialized (`bleProv.stop()`).
+- **Bluetooth chosen** → Wi-Fi is turned off (`WiFi.mode(WIFI_OFF)`).
+
+The selected mode is stored in flash, so on every subsequent boot only the
+chosen radio is started and the other one is never enabled. The only way to
+re-enable both interfaces and run the provisioning portal again is the
+**5-second BOOT-button reset** (which wipes the configuration).
+
 ## Build & flash
 
 Each variant is a standalone [PlatformIO](https://platformio.org/) project.
