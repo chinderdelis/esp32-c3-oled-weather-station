@@ -2,17 +2,20 @@
 
 This is the **Italian** build of the firmware. During provisioning the portal
 presents a dropdown of **107 Italian provinces**; the device then resolves the
-selected province to coordinates and timezone and fetches the daily weather
+selected province to coordinates and fetches the daily weather
 from Open-Meteo.
 
 ## Differences from the `world/` variant
 
 - The configuration portal offers an **Italian province** selector instead of a
   free-text city field.
-- Geocoding retries the province name with a `", Italy"` suffix to improve
-  matching (e.g. `Roma` → `Roma, Italy`).
-- The fallback timezone (used only if Open-Meteo does not return one) is set to
-  Rome (`CET-1CEST,M3.5.0,M10.5.0/3`).
+- Geocoding is constrained to Italy (`countryCode=IT`) and the most populous
+  match is chosen, so `Roma` resolves to Rome instead of a same-named village.
+  Compound province names fall back to their first part (e.g. `Forlì-Cesena`
+  → `Forlì`).
+- The clock uses the UTC offset reported by the forecast for the chosen
+  location; before the first successful fetch it shows UTC. IANA timezone names
+  are not used because newlib support on the ESP32 is unreliable.
 
 Everything else — display behavior, Bluetooth mode, factory reset, build/flash
 instructions — is identical to the [`world/`](../world/README.md) variant and is
@@ -45,7 +48,7 @@ esptool.py --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 firmware/firmware.f
 | `wifi_portal.*`  | SoftAP config portal with the Italian province selector.    |
 | `provinces.h`    | The list of 107 Italian provinces.                          |
 | `ble_prov.*`     | BLE server; receives time + weather from a paired phone.    |
-| `storage.*`      | NVS persistence (mode, location, lat/lon, timezone).        |
+| `storage.*`      | NVS persistence (mode, location, lat/lon).                  |
 | `weather.*`      | Open-Meteo geocoding + forecast helpers.                    |
 | `display.*`      | 72×40 OLED rendering (clock, weather icons, temps, status). |
-| `config.h`       | Pinout, NVS keys, timing and default timezone.              |
+| `config.h`       | Pinout, NVS keys, timing and JSON buffer sizes.             |

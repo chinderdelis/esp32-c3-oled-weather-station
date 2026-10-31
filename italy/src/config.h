@@ -33,13 +33,11 @@
 #define BOOT_HOLD_MS 5000
 #define SCREEN_ROTATE_MS 10000
 
-// Timezone (fallback when a location has no timezone info)
-#define TZ_INFO "CET-1CEST,M3.5.0,M10.5.0/3"
-
 // JSON Buffer sizes
 #define JSON_BUF_SMALL 256
 #define JSON_BUF_MED 512
 #define JSON_BUF_LARGE 1024
+#define JSON_BUF_GEO 8192
 
 // Weather refresh interval (WiFi mode)
 #define WEATHER_REFRESH_MS 900000UL

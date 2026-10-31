@@ -50,9 +50,11 @@ Reference documentation for the board is collected in [`docs/`](docs/).
 5. **Factory reset:** hold the `BOOT` button for **5 seconds** to wipe the
    configuration and restart the provisioning flow.
 
-> In Wi-Fi mode the device resolves the chosen location to coordinates +
-> timezone after connecting, then periodically fetches the day's weather. If a
-> location cannot be resolved, it returns to the provisioning portal.
+> In Wi-Fi mode the device resolves the chosen location to coordinates after
+> connecting, then periodically fetches the day's weather. Local time is derived
+> from the location's UTC offset reported by the forecast, so no IANA timezone
+> support is required on the device. If a location cannot be resolved, the
+> device keeps retrying in the background instead of wiping the configuration.
 
 ### Bluetooth mode (phone as data source)
 
