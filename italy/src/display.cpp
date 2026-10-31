@@ -1,9 +1,29 @@
 #include "display.h"
+#include <math.h>
 
 DisplayMgr displayMgr;
 
+static const uint8_t *const kNumberFonts[] = {
+  u8g2_font_logisoso38_tn,
+  u8g2_font_logisoso34_tn,
+  u8g2_font_logisoso30_tn,
+  u8g2_font_logisoso28_tn,
+  u8g2_font_logisoso26_tn,
+  u8g2_font_logisoso24_tn,
+  u8g2_font_logisoso20_tn,
+  u8g2_font_logisoso16_tn
+};
+
+static const unsigned long kScreenMs[] = {
+  SCREEN_ICON_MS,
+  SCREEN_MIN_MS,
+  SCREEN_MAX_MS,
+  SCREEN_CLOCK_MS
+};
+
 DisplayMgr::DisplayMgr() : u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE) {
-  screenToggle = true;
+  normalActive = false;
+  screenIndex = 0;
   lastSwitch = millis();
   currentHour = 0;
   currentMinute = 0;
@@ -16,6 +36,7 @@ void DisplayMgr::begin() {
 }
 
 void DisplayMgr::showMessage(const char* line1, const char* line2) {
+  normalActive = false;
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_5x7_tf);
   u8g2.drawStr(0, 10, line1);
@@ -26,6 +47,7 @@ void DisplayMgr::showMessage(const char* line1, const char* line2) {
 }
 
 void DisplayMgr::showConfigAP(const String &ssid, const String &ip) {
+  normalActive = false;
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_4x6_tf);
   u8g2.drawStr(0, 8, "CFG AP");
@@ -35,10 +57,11 @@ void DisplayMgr::showConfigAP(const String &ssid, const String &ip) {
 }
 
 void DisplayMgr::showBlePairing() {
+  normalActive = false;
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_4x6_tf);
   u8g2.drawStr(0, 10, "BLE PAIR");
-  u8g2.drawStr(0, 20, "PIN:0000");
+  u8g2.drawStr(0, 20, "PIN:000000");
   u8g2.sendBuffer();
 }
 
@@ -58,36 +81,88 @@ void DisplayMgr::drawSmiley() {
   u8g2.drawCircle(36, 24, 6, U8G2_DRAW_UPPER_LEFT);
 }
 
-void DisplayMgr::drawIconSunnySunglasses(int x, int y) {
-  u8g2.drawCircle(x + 8, y + 8, 6);
-  u8g2.drawLine(x + 8, y, x + 8, y + 2);
-  u8g2.drawLine(x + 8, y + 14, x + 8, y + 16);
-  u8g2.drawLine(x, y + 8, x + 2, y + 8);
-  u8g2.drawLine(x + 14, y + 8, x + 16, y + 8);
-  u8g2.drawBox(x + 2, y + 6, 5, 4);
-  u8g2.drawBox(x + 9, y + 6, 5, 4);
-  u8g2.drawLine(x + 7, y + 8, x + 9, y + 8);
+void DisplayMgr::drawWeatherIcon(int weatherCode) {
+  if (weatherCode == 0 || weatherCode == 1) {
+    const int cx = 36;
+    const int cy = 20;
+    u8g2.drawDisc(cx, cy, 11, U8G2_DRAW_ALL);
+    static const int8_t dx[8] = {1, 1, 0, -1, -1, -1, 0, 1};
+    static const int8_t dy[8] = {0, 1, 1, 1, 0, -1, -1, -1};
+    for (uint8_t i = 0; i < 8; i++) {
+      u8g2.drawLine(cx + dx[i] * 14, cy + dy[i] * 14,
+                    cx + dx[i] * 18, cy + dy[i] * 18);
+    }
+    return;
+  }
+
+  bool rain = !(weatherCode >= 2 && weatherCode <= 3);
+  int cy = rain ? 16 : 20;
+  u8g2.drawDisc(23, cy + 4, 8, U8G2_DRAW_ALL);
+  u8g2.drawDisc(34, cy - 1, 10, U8G2_DRAW_ALL);
+  u8g2.drawDisc(47, cy + 4, 8, U8G2_DRAW_ALL);
+  u8g2.drawBox(23, cy + 4, 25, 8);
+
+  if (rain) {
+    u8g2.drawLine(26, 30, 23, 37);
+    u8g2.drawLine(36, 30, 33, 37);
+    u8g2.drawLine(46, 30, 43, 37);
+  }
 }
 
-void DisplayMgr::drawIconCloud(int x, int y) {
-  u8g2.drawCircle(x + 4, y + 10, 4);
-  u8g2.drawCircle(x + 10, y + 8, 5);
-  u8g2.drawCircle(x + 16, y + 10, 4);
-  u8g2.drawBox(x + 4, y + 10, 12, 4);
+const uint8_t *DisplayMgr::pickNumberFont(const char *text, bool withDegree) {
+  for (uint8_t i = 0; i < sizeof(kNumberFonts) / sizeof(kNumberFonts[0]); i++) {
+    u8g2.setFont(kNumberFonts[i]);
+    int h = u8g2.getAscent() - u8g2.getDescent();
+    if (h > 40) {
+      continue;
+    }
+    int r = h / 12;
+    if (r < 2) {
+      r = 2;
+    }
+    int extra = withDegree ? (3 * r) : 0;
+    if ((int)u8g2.getStrWidth(text) + extra <= 72) {
+      return kNumberFonts[i];
+    }
+  }
+  return u8g2_font_logisoso16_tn;
 }
 
-void DisplayMgr::drawIconCloudRain(int x, int y) {
-  drawIconCloud(x, y - 2);
-  u8g2.drawLine(x + 6, y + 12, x + 6, y + 16);
-  u8g2.drawLine(x + 10, y + 12, x + 10, y + 16);
-  u8g2.drawLine(x + 14, y + 12, x + 14, y + 16);
+void DisplayMgr::drawCenteredNumber(const char *text, bool withDegree) {
+  u8g2.setFont(pickNumberFont(text, withDegree));
+  int8_t ascent = u8g2.getAscent();
+  int8_t descent = u8g2.getDescent();
+  int h = ascent - descent;
+  int r = withDegree ? (h / 12) : 0;
+  if (withDegree && r < 2) {
+    r = 2;
+  }
+  int w = u8g2.getStrWidth(text);
+  int extra = withDegree ? (3 * r) : 0;
+  int x = (72 - (w + extra)) / 2;
+  int y = (40 + ascent + descent) / 2;
+
+  u8g2.drawStr(x, y, text);
+
+  if (withDegree) {
+    int cx = x + w + r;
+    int cy = y - ascent + r;
+    u8g2.drawDisc(cx, cy, r, U8G2_DRAW_ALL);
+  }
 }
 
-void DisplayMgr::drawClock(int x, int y) {
-  u8g2.setFont(u8g2_font_5x7_tf);
+void DisplayMgr::drawTemperature(float temp, const char *label) {
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%d", (int)roundf(temp));
+  drawCenteredNumber(buf, true);
+  u8g2.setFont(u8g2_font_4x6_tf);
+  u8g2.drawStr(72 - u8g2.getStrWidth(label), 39, label);
+}
+
+void DisplayMgr::drawClockBig() {
   char buf[6];
-  sprintf(buf, "%02d:%02d", currentHour, currentMinute);
-  u8g2.drawStr(x, y, buf);
+  snprintf(buf, sizeof(buf), "%02d:%02d", currentHour, currentMinute);
+  drawCenteredNumber(buf, false);
 }
 
 void DisplayMgr::updateTime(int hour, int minute) {
@@ -96,43 +171,43 @@ void DisplayMgr::updateTime(int hour, int minute) {
 }
 
 void DisplayMgr::showNormalScreen(bool showIcon, bool isWifiMode, int weatherCode, float tempMin, float tempMax, int hour, int minute) {
+  (void)showIcon;
+  (void)isWifiMode;
   currentHour = hour;
   currentMinute = minute;
-  
+
   unsigned long now = millis();
-  if (now - lastSwitch >= SCREEN_ROTATE_MS) {
-    screenToggle = !screenToggle;
+  if (!normalActive) {
+    normalActive = true;
+    screenIndex = 0;
+    lastSwitch = now;
+  } else if (now - lastSwitch >= kScreenMs[screenIndex]) {
+    screenIndex = (screenIndex + 1) % 4;
     lastSwitch = now;
   }
-  
+
   u8g2.clearBuffer();
-  
-  drawClock(48, 8);
-  
-  if (screenToggle) {
-    if (showIcon) {
-      if (weatherCode == 0 || weatherCode == 1) {
-        drawIconSunnySunglasses(4, 12);
-      } else if (weatherCode >= 2 && weatherCode <= 3) {
-        drawIconCloud(4, 10);
-      } else {
-        drawIconCloudRain(4, 10);
-      }
-    }
-  } else {
-    u8g2.setFont(u8g2_font_5x8_tf);
-    char buf1[12];
-    char buf2[12];
-    sprintf(buf1, "MIN:%dC", (int)round(tempMin));
-    sprintf(buf2, "MAX:%dC", (int)round(tempMax));
-    u8g2.drawStr(4, 24, buf1);
-    u8g2.drawStr(4, 36, buf2);
+
+  switch (screenIndex) {
+    case 0:
+      drawWeatherIcon(weatherCode);
+      break;
+    case 1:
+      drawTemperature(tempMin, "MIN");
+      break;
+    case 2:
+      drawTemperature(tempMax, "MAX");
+      break;
+    default:
+      drawClockBig();
+      break;
   }
-  
+
   u8g2.sendBuffer();
 }
 
 void DisplayMgr::showOffline() {
+  normalActive = false;
   u8g2.clearBuffer();
   drawSmiley();
   u8g2.setFont(u8g2_font_4x6_tf);

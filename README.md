@@ -5,16 +5,16 @@
 > change between revisions. Tester feedback and issue reports are very welcome.
 
 Firmware for the **ESP32-C3 Super Mini** board with an integrated **0.42" OLED**
-display. The device boots into a provisioning portal where you choose how it
-connects — **Wi-Fi** or **Bluetooth** — and then shows a clock plus weather
-information on the tiny display:
+display. The device boots into a **Wi-Fi** provisioning portal and then shows a
+clock plus weather information on the tiny display:
 
-- A weather **icon** screen (sunny / cloudy / rainy) and a **temperature**
-  screen (daily min / max) that **alternate every 10 seconds**.
-- In Wi-Fi mode the data is fetched live from
-  [Open-Meteo](https://open-meteo.com/) (no API key required).
-- In Bluetooth mode the phone acts as the data source (sends time + weather
-  over BLE with PIN `0000`).
+- Four centered screens, each drawn as large as the 72×40 display allows:
+  weather **icon** (5 s), **min temperature** (5 s), **max temperature**
+  (5 s) and **clock** (7 s).
+- Data is fetched live from [Open-Meteo](https://open-meteo.com/) (no API key
+  required).
+- **Bluetooth is work in progress:** the option is hidden in the portal and the
+  firmware currently runs Wi-Fi only (see below).
 
 This repository contains **two variants** that share the same code structure:
 
@@ -36,19 +36,18 @@ Reference documentation for the board is collected in [`docs/`](docs/).
 
 ## How provisioning works
 
-1. On first boot (no configuration stored) the device starts **both**:
-   - a Wi-Fi **SoftAP** captive/config portal, and
-   - a **BLE** server.
- 2. Connect to the Wi-Fi AP (SSID `ESP32C3-CFG-<mac>`) and open the portal, or
-    pair over Bluetooth (PIN `0000`). The OLED displays the AP name and the
-    portal IP address (by default **`192.168.4.1`**); open
-    **http://192.168.4.1** in a browser.
-3. Pick the connection type, enter your Wi-Fi credentials (Wi-Fi mode) and your
-   location (province for `italy/`, any city for `world/`).
-4. The choice is persisted in NVS (flash). On the next boot the device connects
-   directly — no portal.
-5. **Factory reset:** hold the `BOOT` button for **5 seconds** to wipe the
-   configuration and restart the provisioning flow.
+1. On first boot (no configuration stored) the device starts a Wi-Fi
+   **SoftAP** configuration portal (SSID `ESP32C3-CFG-<mac>`).
+2. Connect to that AP and open **http://192.168.4.1** in a browser. The OLED
+   displays the AP name and the portal IP address.
+3. Enter your Wi-Fi credentials and your location (province for `italy/`, any
+   city for `world/`).
+4. The configuration is persisted in NVS (flash). On the next boot the device
+   connects directly — no portal.
+5. **Factory reset:** while the device is running, hold the `BOOT` button
+   (GPIO9) for **5 seconds** to wipe the configuration and restart the
+   provisioning flow. The `RESET`/`EN` button cannot be read by the firmware:
+   pressing it only reboots the device and keeps the configuration.
 
 > In Wi-Fi mode the device resolves the chosen location to coordinates after
 > connecting, then periodically fetches the day's weather. Local time is derived
@@ -56,27 +55,25 @@ Reference documentation for the board is collected in [`docs/`](docs/).
 > support is required on the device. If a location cannot be resolved, the
 > device keeps retrying in the background instead of wiping the configuration.
 
-### Bluetooth mode (phone as data source)
+### Bluetooth (work in progress)
 
-When **Bluetooth** is selected, the device does **not** use the internet. Like a
-Bluetooth smartwatch, it relies on the paired phone, which pushes the current
-**time** and **weather** to the device. Pair with PIN `0000`; once paired, the
-phone sends updates (`hour`, `minute`, `weather_code`, `temp_min`, `temp_max`)
-and the device displays them. The location itself is chosen in the portal during
-configuration.
+Bluetooth is **not enabled** in the current firmware: the portal only offers
+Wi-Fi. The BLE code and an experimental Android Web Bluetooth page
+([`docs/ble/`](docs/ble/)) are kept in the repository as a starting point for a
+future solution. They are not part of the supported flow yet.
 
-### Radios after first configuration
+A phone cannot provide time or weather over BLE without software running on the
+phone: a BLE peripheral cannot force Android to open a web page, and Android has
+removed the old "Physical Web/Eddystone" URL notifications. The practical
+options are a Web Bluetooth page (Android) or a native app (Android/iOS), which
+is why this is deferred.
 
-After the first successful configuration, the interface you did **not** choose is
-switched off permanently — until a factory reset:
+### Radio use
 
-- **Wi-Fi chosen** → Bluetooth is fully de-initialized (`bleProv.stop()`).
-- **Bluetooth chosen** → Wi-Fi is turned off (`WiFi.mode(WIFI_OFF)`).
-
-The selected mode is stored in flash, so on every subsequent boot only the
-chosen radio is started and the other one is never enabled. The only way to
-re-enable both interfaces and run the provisioning portal again is the
-**5-second BOOT-button reset** (which wipes the configuration).
+Only Wi-Fi is used. The device starts the SoftAP portal when unconfigured and
+switches to station mode after configuration; the BLE stack is not started. The
+only way to reopen the portal is the **5-second BOOT-button reset** (which wipes
+the configuration).
 
 ## Build & flash
 
@@ -120,13 +117,14 @@ After flashing, the device reboots into the provisioning portal:
 
 1. Connect to the Wi-Fi AP named `ESP32C3-CFG-<mac>` from your phone/laptop.
    The OLED shows the AP name and the portal IP (default **`192.168.4.1`**).
-2. Open **http://192.168.4.1** in a browser, choose **Wi-Fi** or **Bluetooth**,
-   enter your credentials and your location (province for `italy/`, any city
-   for `world/`).
+2. Open **http://192.168.4.1** in a browser, enter your Wi-Fi credentials and a
+   location (province for `italy/`, any city for `world/`).
 3. The device connects, fetches the time and weather, and starts displaying.
 
-To wipe the configuration and start over, **hold the BOOT button for 5
-seconds**. Please report any issues (wrong weather, wrong time, display
+To wipe the configuration and start over, **hold the BOOT button (GPIO9) for 5
+seconds while the device is running**. This also erases the saved Wi-Fi
+credentials, so the device returns to the configuration AP instead of
+reconnecting to the old network. Please report any issues (wrong weather, wrong time, display
 glitches) with the variant, location and connection mode used.
 
 ## Project layout

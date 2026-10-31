@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESP32-C3 OLED Weather - Bluetooth</title>
+<style>
+  body { font-family: monospace; background:#000; color:#0f0; padding:16px; max-width:640px; margin:0 auto; }
+  h1 { font-size:18px; }
+  button { background:#0f0; color:#000; border:0; padding:10px 14px; margin:4px 4px 4px 0; font-family:monospace; font-weight:bold; }
+  button:disabled { background:#333; color:#666; }
+  label { display:block; margin:8px 0; }
+  input[type=number] { width:120px; background:#111; color:#0f0; border:1px solid #0f0; padding:4px; }
+  #log { background:#111; border:1px solid #0f0; padding:8px; margin-top:12px; height:180px; overflow:auto; white-space:pre-wrap; font-size:12px; }
+  .hint { color:#0a0; font-size:12px; }
+  .err { color:#f55; }
+  .ok { color:#0f0; }
+</style>
+</head>
+<body>
+<h1>ESP32-C3 OLED Weather</h1>
+<p class="err"><b>Work in progress:</b> Bluetooth is not enabled in the current firmware (Wi-Fi only). This page is a prototype for a future release.</p>
+<p class="hint">Android + Chrome. When Android asks for the pairing PIN, enter <b>000000</b>.</p>
+
+<label><input type="checkbox" id="allDevices"> Show all Bluetooth devices (if the board is not listed)</label>
+<button id="connect">Connect</button>
+<button id="send" disabled>Send now</button>
+<label><input type="checkbox" id="auto" checked> Update automatically every 15 minutes</label>
+<button id="locate">Use my location</button>
+
+<div id="log"></div>
+
+<script>
+const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+const CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+const DEVICE_NAME = "ESP32C3-OLED";
+const UPDATE_MS = 15 * 60 * 1000;
+
+let device = null;
+let characteristic = null;
+let timer = null;
+let sending = false;
+
+const logEl = document.getElementById("log");
+const connectBtn = document.getElementById("connect");
+const sendBtn = document.getElementById("send");
+const autoEl = document.getElementById("auto");
+const locateBtn = document.getElementById("locate");
+
+function log(msg, cls) {
+  const line = document.createElement("div");
+  if (cls) line.className = cls;
+  const t = new Date().toLocaleTimeString();
+  line.textContent = "[" + t + "] " + msg;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setConnected(connected) {
+  connectBtn.textContent = connected ? "Disconnect" : "Connect";
+  sendBtn.disabled = !connected;
+  if (connected) {
+    if (autoEl.checked) startAuto();
+  } else {
+    stopAuto();
+  }
+}
+
+async function connectToDevice(d) {
+  device = d;
+  device.removeEventListener("gattserverdisconnected", onDisconnected);
+  device.addEventListener("gattserverdisconnected", onDisconnected);
+  log("Connecting to " + (device.name || "device") + "...");
+  const server = await device.gatt.connect();
+  const service = await server.getPrimaryService(SERVICE_UUID);
+  characteristic = await service.getCharacteristic(CHAR_UUID);
+  await subscribe();
+  log("Connected. Service and characteristic ready.", "ok");
+  setConnected(true);
+  await sendUpdate();
+}
+
+async function connect() {
+  if (!navigator.bluetooth) {
+    log("Web Bluetooth is not available. Use Android Chrome (HTTPS required).", "err");
+    return;
+  }
+  try {
+    const options = { optionalServices: [SERVICE_UUID] };
+    if (document.getElementById("allDevices").checked) {
+      options.acceptAllDevices = true;
+    } else {
+      options.filters = [{ namePrefix: DEVICE_NAME }];
+    }
+    log("Requesting device...");
+    const d = await navigator.bluetooth.requestDevice(options);
+    await connectToDevice(d);
+  } catch (e) {
+    log("Connect failed: " + e.message, "err");
+    setConnected(false);
+  }
+}
+
+async function subscribe() {
+  try {
+    await characteristic.startNotifications();
+    characteristic.removeEventListener("characteristicvaluechanged", onNotify);
+    characteristic.addEventListener("characteristicvaluechanged", onNotify);
+    log("Notifications enabled.");
+  } catch (e) {
+    log("Notifications not available: " + e.message);
+  }
+}
+
+function onNotify(event) {
+  const text = new TextDecoder().decode(event.target.value);
+  if (text.trim() === "GET") {
+    log("Device requested data.");
+    sendUpdate();
+  }
+}
+
+async function autoReconnect() {
+  if (!navigator.bluetooth || !navigator.bluetooth.getDevices) return;
+  try {
+    const devices = await navigator.bluetooth.getDevices();
+    const d = devices.find((x) => x.name && x.name.indexOf(DEVICE_NAME) === 0);
+    if (!d) {
+      log("No previously authorised board: tap Connect.");
+      return;
+    }
+    log("Reconnecting to " + d.name + "...");
+    await connectToDevice(d);
+  } catch (e) {
+    log("Auto-reconnect failed: " + e.message, "err");
+  }
+}
+
+function onDisconnected() {
+  log("Disconnected.", "err");
+  characteristic = null;
+  setConnected(false);
+}
+
+async function disconnect() {
+  stopAuto();
+  if (device && device.gatt.connected) device.gatt.disconnect();
+  characteristic = null;
+  setConnected(false);
+}
+
+function getPosition() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Geolocation not available"));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      (err) => reject(new Error("Location denied: " + err.message)),
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 }
+    );
+  });
+}
+
+async function fetchWeather(lat, lon) {
+  const url = "https://api.open-meteo.com/v1/forecast"
+    + "?latitude=" + lat
+    + "&longitude=" + lon
+    + "&current=weather_code"
+    + "&daily=weather_code,temperature_2m_min,temperature_2m_max"
+    + "&timezone=auto&forecast_days=1";
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Weather request failed (" + res.status + ")");
+  const data = await res.json();
+  if (!data.daily || !data.daily.temperature_2m_min) {
+    throw new Error("Unexpected weather response");
+  }
+  return {
+    weather_code: data.current ? data.current.weather_code : data.daily.weather_code[0],
+    temp_min: data.daily.temperature_2m_min[0],
+    temp_max: data.daily.temperature_2m_max[0]
+  };
+}
+
+async function sendUpdate() {
+  if (!characteristic) {
+    log("Not connected.", "err");
+    return;
+  }
+  if (sending) return;
+  sending = true;
+  sendBtn.disabled = true;
+  try {
+    const pos = await getPosition();
+    log("Location: " + pos.lat.toFixed(4) + ", " + pos.lon.toFixed(4));
+    const weather = await fetchWeather(pos.lat, pos.lon);
+    const now = new Date();
+    const payload = {
+      hour: now.getHours(),
+      minute: now.getMinutes(),
+      weather_code: weather.weather_code,
+      temp_min: Math.round(weather.temp_min * 10) / 10,
+      temp_max: Math.round(weather.temp_max * 10) / 10
+    };
+    const text = JSON.stringify(payload);
+    const bytes = new TextEncoder().encode(text);
+    log("Sending: " + text);
+    if (characteristic.properties.write) {
+      await characteristic.writeValueWithResponse(bytes);
+    } else {
+      await characteristic.writeValueWithoutResponse(bytes);
+    }
+    log("Sent to the board.", "ok");
+  } catch (e) {
+    log("Update failed: " + e.message, "err");
+  } finally {
+    sending = false;
+    if (characteristic) sendBtn.disabled = false;
+  }
+}
+
+function startAuto() {
+  stopAuto();
+  timer = setInterval(() => {
+    if (characteristic) sendUpdate();
+  }, UPDATE_MS);
+}
+
+function stopAuto() {
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+}
+
+connectBtn.addEventListener("click", () => {
+  if (device && device.gatt.connected) disconnect();
+  else connect();
+});
+
+sendBtn.addEventListener("click", sendUpdate);
+
+autoEl.addEventListener("change", () => {
+  if (autoEl.checked && characteristic) startAuto();
+  else stopAuto();
+});
+
+locateBtn.addEventListener("click", async () => {
+  try {
+    const pos = await getPosition();
+    log("Location: " + pos.lat.toFixed(4) + ", " + pos.lon.toFixed(4), "ok");
+  } catch (e) {
+    log(e.message, "err");
+  }
+});
+
+window.addEventListener("load", () => setTimeout(autoReconnect, 500));
+</script>
+</body>
+</html>

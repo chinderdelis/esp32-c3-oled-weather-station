@@ -18,6 +18,7 @@ public:
 private:
   WebServer server;
   bool configDone;
+  String ssidOptions;
   void setupRoutes();
   void handleRoot();
   void handleConfig();

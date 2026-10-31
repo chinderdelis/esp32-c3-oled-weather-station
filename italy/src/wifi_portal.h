@@ -24,6 +24,7 @@ private:
   bool configDone;
   uint8_t selectedMode;
   String selectedProvince;
+  String ssidOptions;
   void setupRoutes();
   void handleRoot();
   void handleConfig();

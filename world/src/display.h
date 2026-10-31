@@ -18,20 +18,20 @@ public:
   void showNormalScreen(bool showIcon, bool isWifiMode, int weatherCode, float tempMin, float tempMax, int hour, int minute);
   void showOffline();
   void updateTime(int hour, int minute);
-  void nextScreen();
-  bool getCurrentScreen();
 
 private:
   U8G2_SSD1306_72X40_ER_F_HW_I2C u8g2;
-  bool screenToggle;
+  bool normalActive;
+  uint8_t screenIndex;
   unsigned long lastSwitch;
   int currentHour;
   int currentMinute;
   void drawSmiley();
-  void drawIconSunnySunglasses(int x, int y);
-  void drawIconCloud(int x, int y);
-  void drawIconCloudRain(int x, int y);
-  void drawClock(int x, int y);
+  void drawWeatherIcon(int weatherCode);
+  void drawTemperature(float temp, const char *label);
+  void drawClockBig();
+  const uint8_t *pickNumberFont(const char *text, bool withDegree);
+  void drawCenteredNumber(const char *text, bool withDegree);
 };
 
 extern DisplayMgr displayMgr;

@@ -27,11 +27,15 @@
 
 // BLE Config
 #define BLE_DEVICE_NAME "ESP32C3-OLED"
-#define BLE_PIN "0000"
+#define BLE_PIN "000000"
+#define BLE_PASSKEY 0
 
 // Timing
 #define BOOT_HOLD_MS 5000
-#define SCREEN_ROTATE_MS 10000
+#define SCREEN_ICON_MS 5000
+#define SCREEN_MIN_MS 5000
+#define SCREEN_MAX_MS 5000
+#define SCREEN_CLOCK_MS 7000
 
 // JSON Buffer sizes
 #define JSON_BUF_SMALL 256

@@ -16,6 +16,7 @@ public:
   BLEProv();
   void begin();
   void stop();
+  void loop();
   bool isConnected();
   bool hasData();
   void getData(int &hour, int &minute, int &weatherCode, float &tempMin, float &tempMax);
@@ -28,6 +29,7 @@ public:
 private:
   BLEServer* pServer;
   BLECharacteristic* pChar;
+  unsigned long lastRequest;
 };
 
 extern BLEProv bleProv;

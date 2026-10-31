@@ -5,7 +5,6 @@
 #include "storage.h"
 #include "display.h"
 #include "wifi_portal.h"
-#include "ble_prov.h"
 #include "weather.h"
 
 // Cached weather values (updated periodically over WiFi)
@@ -16,20 +15,30 @@ int gUtcOffsetSeconds = 0;
 unsigned long lastWeatherFetch = 0;
 unsigned long lastGeoTry = 0;
 
-void checkBootReset() {
-  pinMode(BOOT_PIN, INPUT_PULLUP);
+static void clearWifiCredentials() {
+  WiFi.mode(WIFI_STA);
+  delay(50);
+  WiFi.disconnect(true, true);
+  WiFi.mode(WIFI_OFF);
+  delay(200);
+}
+
+// Factory reset: hold the BOOT button (GPIO9) for BOOT_HOLD_MS while the
+// device is running. The reset/EN button cannot be read by the firmware.
+void checkFactoryReset() {
+  static unsigned long holdStart = 0;
   if (digitalRead(BOOT_PIN) == LOW) {
-    unsigned long start = millis();
-    displayMgr.showMessage("RESET", "HOLD 5S");
-    while (digitalRead(BOOT_PIN) == LOW) {
-      if (millis() - start >= BOOT_HOLD_MS) {
-        displayMgr.showMessage("RESETTING", "");
-        storage.clear();
-        delay(1000);
-        ESP.restart();
-      }
-      delay(10);
+    if (holdStart == 0) {
+      holdStart = millis();
+    } else if (millis() - holdStart >= BOOT_HOLD_MS) {
+      displayMgr.showMessage("RESETTING", "");
+      clearWifiCredentials();
+      storage.clear();
+      delay(500);
+      ESP.restart();
     }
+  } else {
+    holdStart = 0;
   }
 }
 
@@ -109,94 +118,64 @@ void startWifiMode() {
 
 void setup() {
   Serial.begin(115200);
-  delay(100);
+  delay(500);
 
   displayMgr.begin();
   storage.begin();
+  pinMode(BOOT_PIN, INPUT_PULLUP);
 
-  checkBootReset();
-
-  if (!storage.isConfigured()) {
-    // Both provisioning methods stay active until a choice is made.
+  if (!storage.isConfigured() || storage.getMode() != MODE_WIFI) {
+    // Bluetooth is work in progress: provisioning is Wi-Fi only.
+    clearWifiCredentials();
+    storage.clear();
     wifiPortal.begin();
-    bleProv.begin();
 
-    unsigned long startWait = millis();
-    while (millis() - startWait < 120000) {
+    while (!wifiPortal.isConfigured()) {
       wifiPortal.handleClient();
-      if (wifiPortal.isConfigured()) {
-        break;
-      }
       delay(10);
     }
 
-    uint8_t mode = storage.getMode();
-    if (mode == MODE_WIFI) {
-      unsigned long wifiStart = millis();
-      while (WiFi.status() != WL_CONNECTED && millis() - wifiStart < 30000) {
-        displayMgr.showWifiConnecting();
-        delay(500);
-      }
-      if (WiFi.status() == WL_CONNECTED) {
-        bleProv.stop();  // disable the unused interface after a successful join
-        WiFi.softAPdisconnect(true);
-        startWifiMode();
-      } else {
-        // Wrong credentials: back to the configuration portal.
-        storage.clear();
-        ESP.restart();
-      }
-    } else if (mode == MODE_BLE) {
-      WiFi.mode(WIFI_OFF);  // disable the unused interface
-      displayMgr.showBlePairing();
+    unsigned long wifiStart = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - wifiStart < 30000) {
+      displayMgr.showWifiConnecting();
+      delay(500);
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+      WiFi.softAPdisconnect(true);
+      startWifiMode();
+    } else {
+      // Wrong credentials: back to the configuration portal.
+      clearWifiCredentials();
+      storage.clear();
+      ESP.restart();
     }
   } else {
-    uint8_t mode = storage.getMode();
-    if (mode == MODE_WIFI) {
-      bleProv.stop();  // no-op when BLE was never initialized
-      startWifiMode();
-    } else if (mode == MODE_BLE) {
-      WiFi.mode(WIFI_OFF);
-      bleProv.begin();
-      displayMgr.showBlePairing();
-    }
+    startWifiMode();
   }
 }
 
 void loop() {
-  uint8_t mode = storage.getMode();
+  checkFactoryReset();
 
-  if (mode == MODE_WIFI) {
-    if (WiFi.status() == WL_CONNECTED) {
-      updateWeatherIfNeeded();
+  if (WiFi.status() == WL_CONNECTED) {
+    updateWeatherIfNeeded();
 
-      int hour = 0, minute = 0;
-      time_t now = time(nullptr);
-      if (now > 1600000000) {
-        struct tm utc;
-        gmtime_r(&now, &utc);
-        int minutes = utc.tm_hour * 60 + utc.tm_min + gUtcOffsetSeconds / 60;
-        minutes = ((minutes % 1440) + 1440) % 1440;
-        hour = minutes / 60;
-        minute = minutes % 60;
-      }
-
-      displayMgr.updateTime(hour, minute);
-      displayMgr.showNormalScreen(true, true, gWeatherCode, gTempMin, gTempMax,
-                                 hour, minute);
-    } else {
-      displayMgr.showOffline();
+    int hour = 0, minute = 0;
+    time_t now = time(nullptr);
+    if (now > 1600000000) {
+      struct tm utc;
+      gmtime_r(&now, &utc);
+      int minutes = utc.tm_hour * 60 + utc.tm_min + gUtcOffsetSeconds / 60;
+      minutes = ((minutes % 1440) + 1440) % 1440;
+      hour = minutes / 60;
+      minute = minutes % 60;
     }
-  } else if (mode == MODE_BLE) {
-    if (bleProv.hasData()) {
-      int hour, minute, weatherCode;
-      float tempMin, tempMax;
-      bleProv.getData(hour, minute, weatherCode, tempMin, tempMax);
-      displayMgr.updateTime(hour, minute);
-      displayMgr.showNormalScreen(true, false, weatherCode, tempMin, tempMax, hour, minute);
-    } else {
-      displayMgr.showOffline();
-    }
+
+    displayMgr.updateTime(hour, minute);
+    displayMgr.showNormalScreen(true, true, gWeatherCode, gTempMin, gTempMax,
+                               hour, minute);
+  } else {
+    displayMgr.showOffline();
   }
 
   delay(100);

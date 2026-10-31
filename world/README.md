@@ -14,7 +14,7 @@ lets you type **any city in the world**; the device resolves it to coordinates
   first successful fetch it shows UTC. IANA timezone names are not used because
   newlib support on the ESP32 is unreliable.
 
-Everything else — display behavior, Bluetooth mode, factory reset, build/flash
+Everything else — display behavior, Wi-Fi behavior, factory reset, build/flash
 instructions — is identical to the [`italy/`](../italy/README.md) variant and is
 described in the [top-level README](../README.md).
 
@@ -41,9 +41,9 @@ esptool.py --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 firmware/firmware.f
 
 | File             | Purpose                                                     |
 |------------------|-------------------------------------------------------------|
-| `main.cpp`       | Boot flow, provisioning, Wi-Fi/BLE loop, weather refresh.   |
+| `main.cpp`       | Boot flow, provisioning, Wi-Fi loop, weather refresh.       |
 | `wifi_portal.*`  | SoftAP config portal with the free-text city input.         |
-| `ble_prov.*`     | BLE server; receives time + weather from a paired phone.    |
+| `ble_prov.*`     | BLE prototype (work in progress, not used by the firmware). |
 | `storage.*`      | NVS persistence (mode, location, lat/lon).                  |
 | `weather.*`      | Open-Meteo geocoding + forecast helpers.                    |
 | `display.*`      | 72×40 OLED rendering (clock, weather icons, temps, status). |
